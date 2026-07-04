@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== 顶部导航栏 ==================== -->
+<header class="navbar">
+    <div class="container nav-container">
+        <div class="nav-left">
+            <span class="logo">AI Content Tool</span>
+        </div>
+        <div class="nav-right">
+            <span class="nav-project-name">{{ project_name }}</span>
+            <span class="nav-time" id="currentTime">{{ now }}</span>
+        </div>
+    </div>
+</header>
+
+<!-- ==================== Tab 切换 ==================== -->
+<div class="container">
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="tab-generate">批量生成</button>
+        <button class="tab-btn" data-tab="tab-image">图片处理</button>
+        <button class="tab-btn" data-tab="tab-dashboard">数据看板</button>
+    </div>
+
+    <!-- ==================== Tab 1: 批量生成 ==================== -->
+    <div id="tab-generate" class="tab-content active">
+        <div class="card">
+            <h2 class="card-title">上传产品清单</h2>
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2B579A" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <p class="upload-text">拖拽 Excel 文件到此处，或 <span class="upload-link">点击选择</span></p>
+                <p class="upload-hint">支持 .xlsx 格式</p>
+                <input type="file" id="fileInput" accept=".xlsx" hidden>
+            </div>
+        </div>
+
+        <div class="card" id="previewCard" style="display:none;">
+            <h2 class="card-title">文件预览</h2>
+            <div class="table-container">
+                <table class="data-table" id="previewTable">
+                    <thead><tr><th>#</th><th>产品名称</th></tr></thead>
+                    <tbody id="previewBody"></tbody>
+                </table>
+            </div>
+            <p class="preview-info" id="previewInfo"></p>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">选择生成风格</h2>
+            <div class="style-checkboxes" id="styleCheckboxes">
+                {% for style in styles %}
+                <label class="style-checkbox">
+                    <input type="checkbox" value="{{ style.name }}" checked>
+                    <span class="checkmark"></span>
+                    {{ style.name }}
+                </label>
+                {% endfor %}
+            </div>
+            <div class="style-tags" id="styleTags"></div>
+        </div>
+
+        <div class="action-row">
+            <button class="btn btn-generate" id="btnGenerate" disabled>
+                <span class="btn-icon">&#9889;</span> 开始生成
+            </button>
+            <span class="ai-badge" id="aiBadge" style="display:none;">AI</span>
+        </div>
+
+        <!-- 逐条进度区域 -->
+        <div class="progress-wrapper" id="progressWrapper" style="display:none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">准备中...</p>
+            <div class="progress-items" id="progressItems"></div>
+        </div>
+
+        <div class="card" id="resultCard" style="display:none;">
+            <h2 class="card-title">生成结果</h2>
+            <div class="table-container">
+                <table class="data-table result-table" id="resultTable">
+                    <thead><tr><th>产品名称</th><th>风格</th><th>Prompt</th><th>关键词标签</th></tr></thead>
+                    <tbody id="resultBody"></tbody>
+                </table>
+            </div>
+            <div class="export-row">
+                <button class="btn btn-export" id="btnExportExcel">&#128196; 导出 Excel</button>
+                <button class="btn btn-export" id="btnExportCSV">&#128193; 导出 CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Tab 2: 图片处理 ==================== -->
+    <div id="tab-image" class="tab-content">
+        <div class="card">
+            <h2 class="card-title">上传图片</h2>
+            <div class="upload-zone" id="imageUploadZone">
+                <div class="upload-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2B579A" stroke-width="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                </div>
+                <p class="upload-text">拖拽图片到此处，或 <span class="upload-link">点击选择</span>（支持多选）</p>
+                <p class="upload-hint">支持 JPG / PNG / WebP</p>
+                <input type="file" id="imageFileInput" accept="image/*" multiple hidden>
+            </div>
+        </div>
+
+        <div class="card" id="thumbnailsCard" style="display:none;">
+            <h2 class="card-title">已上传图片</h2>
+            <div class="thumbnail-grid" id="thumbnailGrid"></div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">处理参数</h2>
+            <div class="param-row">
+                <div class="param-group">
+                    <label class="param-label">目标尺寸</label>
+                    <div class="param-inline">
+                        <input type="number" class="param-input size-input" id="targetWidth" value="1080" min="100">
+                        <span class="param-sep">x</span>
+                        <input type="number" class="param-input size-input" id="targetHeight" value="1080" min="100">
+                    </div>
+                </div>
+                <div class="param-group">
+                    <label class="param-label">水印文字</label>
+                    <input type="text" class="param-input" id="watermarkText" placeholder="可选，留空无水印">
+                </div>
+                <div class="param-group">
+                    <label class="param-label">水印透明度: <span id="opacityValue">0.30</span></label>
+                    <input type="range" class="param-slider" id="watermarkOpacity" min="0" max="1" step="0.05" value="0.3">
+                </div>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button class="btn btn-generate" id="btnProcessImages" disabled>
+                <span class="btn-icon">&#128295;</span> 开始处理
+            </button>
+        </div>
+
+        <div class="progress-wrapper" id="imageProgressWrapper" style="display:none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="imageProgressFill"></div>
+            </div>
+            <p class="progress-text" id="imageProgressText">处理中...</p>
+        </div>
+
+        <div class="card" id="compareCard" style="display:none;">
+            <h2 class="card-title">处理前后对比</h2>
+            <div class="compare-grid" id="compareGrid"></div>
+            <div class="export-row">
+                <button class="btn btn-export" id="btnDownloadZip">&#128230; 批量下载 ZIP</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Tab 3: 数据看板 ==================== -->
+    <div id="tab-dashboard" class="tab-content">
+        <div class="stats-row">
+            <div class="stat-card stat-blue">
+                <div class="stat-number" id="statPrompts">0</div>
+                <div class="stat-label">总生成数</div>
+            </div>
+            <div class="stat-card stat-green">
+                <div class="stat-number" id="statImages">0</div>
+                <div class="stat-label">总处理图片数</div>
+            </div>
+            <div class="stat-card stat-orange">
+                <div class="stat-number" id="statRuns">0</div>
+                <div class="stat-label">运行次数</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">各风格 Prompt 生成数量</h2>
+            <div class="chart-container">
+                <div id="chartStyle" class="chart-box"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">各产品 Prompt 占比</h2>
+            <div class="chart-container">
+                <div id="chartProduct" class="chart-box"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">每日生成量趋势</h2>
+            <div class="chart-container">
+                <div id="chartTrend" class="chart-box"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="footer">
+    <div class="container">
+        <p>AI Content Tool &copy; 2026</p>
+    </div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+(function() {
+    'use strict';
+
+    let uploadedProducts = [];
+    let currentFilename = '';
+    let generatedRows = [];
+    let uploadedImages = [];
+    let processedResults = [];
+
+    // ---- Tab 切换 ----
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById(this.dataset.tab).classList.add('active');
+            if (this.dataset.tab === 'tab-dashboard') {
+                refreshDashboard();
+            }
+        });
+    });
+
+    // ---- 实时时钟 ----
+    function updateClock() {
+        const now = new Date();
+        const s = now.getFullYear() + '-' +
+            String(now.getMonth()+1).padStart(2,'0') + '-' +
+            String(now.getDate()).padStart(2,'0') + ' ' +
+            String(now.getHours()).padStart(2,'0') + ':' +
+            String(now.getMinutes()).padStart(2,'0');
+        document.getElementById('currentTime').textContent = s;
+    }
+    setInterval(updateClock, 30000);
+
+    // ============================================================
+    // Tab 1: 批量生成
+    // ============================================================
+
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+
+    uploadZone.addEventListener('dragover', function(e) {
+        e.preventDefault(); this.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', function(e) {
+        e.preventDefault(); this.classList.remove('dragover');
+    });
+    uploadZone.addEventListener('drop', function(e) {
+        e.preventDefault(); this.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+    });
+    uploadZone.querySelector('.upload-link').addEventListener('click', function(e) {
+        e.stopPropagation(); fileInput.click();
+    });
+    uploadZone.addEventListener('click', function() {
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', function() {
+        if (this.files.length) handleFileUpload(this.files[0]);
+    });
+
+    function handleFileUpload(file) {
+        if (!file.name.endsWith('.xlsx')) {
+            alert('请上传 .xlsx 格式的 Excel 文件');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        fetch('/api/upload', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                uploadedProducts = data.products;
+                currentFilename = data.filename;
+                showPreview(data.products);
+                document.getElementById('btnGenerate').disabled = false;
+            })
+            .catch(e => alert('上传失败: ' + e.message));
+    }
+
+    function showPreview(products) {
+        const card = document.getElementById('previewCard');
+        const tbody = document.getElementById('previewBody');
+        const info = document.getElementById('previewInfo');
+        tbody.innerHTML = products.map((p, i) =>
+            `<tr class="${i%2===0?'row-even':''}"><td>${i+1}</td><td>${escHtml(p)}</td></tr>`
+        ).join('');
+        info.textContent = '共 ' + products.length + ' 个产品';
+        card.style.display = 'block';
+    }
+
+    // ---- 风格选择 ----
+    const styleCheckboxes = document.querySelectorAll('.style-checkbox input[type="checkbox"]');
+    const styleTags = document.getElementById('styleTags');
+
+    function updateStyleTags() {
+        const selected = [];
+        styleCheckboxes.forEach(cb => { if (cb.checked) selected.push(cb.value); });
+        styleTags.innerHTML = selected.map(s =>
+            '<span class="style-tag">' + escHtml(s) +
+            ' <span class="tag-remove" data-style="' + escHtml(s) + '">&times;</span></span>'
+        ).join('');
+        document.querySelectorAll('.tag-remove').forEach(el => {
+            el.addEventListener('click', function() {
+                document.querySelectorAll('.style-checkbox input').forEach(cb => {
+                    if (cb.value === this.dataset.style) cb.checked = false;
+                });
+                updateStyleTags();
+            });
+        });
+    }
+    styleCheckboxes.forEach(cb => cb.addEventListener('change', updateStyleTags));
+    updateStyleTags();
+
+    // ---- 生成（SSE 流式） ----
+    document.getElementById('btnGenerate').addEventListener('click', function() {
+        const selected = [];
+        styleCheckboxes.forEach(cb => { if (cb.checked) selected.push(cb.value); });
+        if (!selected.length) { alert('请至少选择一个风格'); return; }
+        if (!uploadedProducts.length) { alert('请先上传产品清单'); return; }
+
+        const pw = document.getElementById('progressWrapper');
+        const pf = document.getElementById('progressFill');
+        const pt = document.getElementById('progressText');
+        const pi = document.getElementById('progressItems');
+        pw.style.display = 'block';
+        pf.style.width = '0%';
+        pt.textContent = '正在生成...';
+        pi.innerHTML = '';
+        generatedRows = [];
+
+        // 提示 AI 模式
+        var aiBadge = document.getElementById('aiBadge');
+        if (aiBadge && aiBadge.style.display !== 'none') {
+            pt.textContent = 'AI 模式生成中（每条调用 Claude API）...';
+        }
+
+        // 构建 SSE URL
+        var params = new URLSearchParams();
+        uploadedProducts.forEach(function(p) { params.append('products', p); });
+        selected.forEach(function(s) { params.append('styles', s); });
+        params.append('use_ai', aiBadge && aiBadge.style.display !== 'none' ? 'true' : 'false');
+
+        var es = new EventSource('/api/generate_stream?' + params.toString());
+
+        es.onmessage = function(event) {
+            var data = JSON.parse(event.data);
+
+            if (data.done) {
+                // 完成
+                pf.style.width = '100%';
+                pt.textContent = '生成完成！共 ' + data.total + ' 条 Prompt';
+                generatedRows = data.rows;
+                showResults(data.rows);
+                es.close();
+                setTimeout(function() { pw.style.display = 'none'; }, 1500);
+                return;
+            }
+
+            // 更新进度
+            var pct = Math.round((data.current / data.total) * 100);
+            pf.style.width = pct + '%';
+            pt.textContent = data.current + '/' + data.total + ' 条 (' + pct + '%)';
+
+            // 添加进度项
+            var item = document.createElement('div');
+            item.className = 'progress-item';
+            var methodIcon = data.method === 'ai' ? '🤖' : '📋';
+            item.innerHTML = '[' + data.current + '/' + data.total + '] ' +
+                methodIcon + ' ' + escHtml(data.product) + ' — ' + escHtml(data.style);
+            pi.appendChild(item);
+            pi.scrollTop = pi.scrollHeight;
+        };
+
+        es.onerror = function() {
+            pt.textContent = '连接中断，请重试';
+            es.close();
+        };
+    });
+
+    function showResults(rows) {
+        const card = document.getElementById('resultCard');
+        const tbody = document.getElementById('resultBody');
+        tbody.innerHTML = rows.map((r, i) =>
+            '<tr class="' + (i%2===0?'row-even':'') + '">' +
+            '<td>' + escHtml(r['产品名称']) + '</td>' +
+            '<td><span class="style-tag">' + escHtml(r['风格']) + '</span></td>' +
+            '<td class="prompt-cell">' + escHtml(r['Prompt']) + '</td>' +
+            '<td>' + escHtml(r['关键词标签']) + '</td></tr>'
+        ).join('');
+        card.style.display = 'block';
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---- 导出 ----
+    document.getElementById('btnExportExcel').addEventListener('click', () => exportData('excel'));
+    document.getElementById('btnExportCSV').addEventListener('click', () => exportData('csv'));
+
+    function exportData(format) {
+        fetch('/api/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: generatedRows, format: format })
+        })
+            .then(r => {
+                if (!r.ok) { alert('导出失败'); return; }
+                const cd = r.headers.get('Content-Disposition');
+                const fn = cd ? decodeURIComponent(cd.replace(/^.*filename\*?=(?:UTF-8\'')?([^\s;]+).*$/, '$1')) : ('prompts.' + (format==='csv'?'csv':'xlsx'));
+                return r.blob().then(b => {
+                    const url = URL.createObjectURL(b);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = fn;
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a); URL.revokeObjectURL(url);
+                });
+            })
+            .catch(e => alert('导出失败: ' + e.message));
+    }
+
+    // ============================================================
+    // Tab 2: 图片处理
+    // ============================================================
+
+    const imgUploadZone = document.getElementById('imageUploadZone');
+    const imgFileInput = document.getElementById('imageFileInput');
+
+    imgUploadZone.addEventListener('dragover', function(e) {
+        e.preventDefault(); this.classList.add('dragover');
+    });
+    imgUploadZone.addEventListener('dragleave', function(e) {
+        e.preventDefault(); this.classList.remove('dragover');
+    });
+    imgUploadZone.addEventListener('drop', function(e) {
+        e.preventDefault(); this.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleImageUpload(Array.from(e.dataTransfer.files));
+    });
+    imgUploadZone.querySelector('.upload-link').addEventListener('click', function(e) {
+        e.stopPropagation(); imgFileInput.click();
+    });
+    imgUploadZone.addEventListener('click', function() {
+        imgFileInput.click();
+    });
+    imgFileInput.addEventListener('change', function() {
+        if (this.files.length) handleImageUpload(Array.from(this.files));
+    });
+
+    function handleImageUpload(files) {
+        files = files.filter(f => f.type.startsWith('image/'));
+        if (!files.length) { alert('请选择图片文件'); return; }
+        const fd = new FormData();
+        files.forEach(f => fd.append('files', f));
+        fetch('/api/upload_images', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                uploadedImages = uploadedImages.concat(data.images);
+                showThumbnails();
+                document.getElementById('btnProcessImages').disabled = false;
+            })
+            .catch(e => alert('上传失败: ' + e.message));
+    }
+
+    function showThumbnails() {
+        const card = document.getElementById('thumbnailsCard');
+        const grid = document.getElementById('thumbnailGrid');
+        grid.innerHTML = uploadedImages.map(img =>
+            '<div class="thumb-item">' +
+            '<img src="' + img.url + '" alt="' + escHtml(img.name) + '">' +
+            '<p class="thumb-name">' + escHtml(img.name) + '</p>' +
+            '<button class="thumb-remove" data-name="' + escHtml(img.name) + '">&times;</button></div>'
+        ).join('');
+        card.style.display = 'block';
+        document.querySelectorAll('.thumb-remove').forEach(el => {
+            el.addEventListener('click', function() {
+                uploadedImages = uploadedImages.filter(i => i.name !== this.dataset.name);
+                showThumbnails();
+                document.getElementById('btnProcessImages').disabled = uploadedImages.length === 0;
+            });
+        });
+    }
+
+    document.getElementById('watermarkOpacity').addEventListener('input', function() {
+        document.getElementById('opacityValue').textContent = parseFloat(this.value).toFixed(2);
+    });
+
+    document.getElementById('btnProcessImages').addEventListener('click', function() {
+        if (!uploadedImages.length) { alert('请先上传图片'); return; }
+        const pw = document.getElementById('imageProgressWrapper');
+        const pf = document.getElementById('imageProgressFill');
+        const pt = document.getElementById('imageProgressText');
+        pw.style.display = 'block';
+        pf.style.width = '0%';
+        pt.textContent = '正在处理图片...';
+
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 12;
+            if (progress > 90) progress = 90;
+            pf.style.width = progress + '%';
+        }, 300);
+
+        fetch('/api/process_images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                images: uploadedImages.map(i => i.name),
+                width: parseInt(document.getElementById('targetWidth').value) || 1080,
+                height: parseInt(document.getElementById('targetHeight').value) || 1080,
+                watermark: document.getElementById('watermarkText').value,
+                opacity: parseFloat(document.getElementById('watermarkOpacity').value) || 0.3
+            })
+        })
+            .then(r => r.json())
+            .then(data => {
+                clearInterval(interval);
+                pf.style.width = '100%';
+                pt.textContent = '处理完成！';
+                setTimeout(() => { pw.style.display = 'none'; }, 1000);
+                if (data.error) { alert(data.error); return; }
+                processedResults = data.results;
+                showComparison(data.results);
+            })
+            .catch(e => {
+                clearInterval(interval);
+                pf.style.width = '0%';
+                pt.textContent = '处理失败';
+                alert('处理失败: ' + e.message);
+            });
+    });
+
+    function showComparison(results) {
+        const card = document.getElementById('compareCard');
+        const grid = document.getElementById('compareGrid');
+        grid.innerHTML = results.map(r =>
+            '<div class="compare-item">' +
+            '<div class="compare-col"><p class="compare-label">原图</p><img src="' + r.original_url + '" class="compare-img" alt="original"></div>' +
+            '<div class="compare-arrow"><svg width="32" height="32" viewBox="0 0 24 24" fill="#00BFA5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>' +
+            '<div class="compare-col processed-col"><p class="compare-label processed-label">处理后</p><img src="' + r.processed_url + '" class="compare-img processed-img" alt="processed"></div></div>'
+        ).join('');
+        card.style.display = 'block';
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    document.getElementById('btnDownloadZip').addEventListener('click', function() {
+        if (!processedResults.length) return;
+        const filenames = processedResults.map(r => r.processed_url.split('/').pop());
+        fetch('/api/download_zip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: filenames })
+        })
+            .then(r => {
+                if (!r.ok) { alert('下载失败'); return; }
+                const cd = r.headers.get('Content-Disposition');
+                const fn = cd ? decodeURIComponent(cd.replace(/^.*filename\*?=(?:UTF-8\'')?([^\s;]+).*$/, '$1')) : 'processed.zip';
+                return r.blob().then(b => {
+                    const url = URL.createObjectURL(b);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = fn;
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a); URL.revokeObjectURL(url);
+                });
+            })
+            .catch(e => alert('下载失败: ' + e.message));
+    });
+
+    // ============================================================
+    // Tab 3: 数据看板
+    // ============================================================
+
+    function refreshDashboard() {
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('statPrompts').textContent = data.total_prompts;
+                document.getElementById('statImages').textContent = data.total_images;
+                document.getElementById('statRuns').textContent = data.run_count;
+                if (typeof initCharts !== 'undefined') initCharts(data);
+            })
+            .catch(e => console.error('看板加载失败:', e));
+    }
+    refreshDashboard();
+
+    // 检测 AI 是否启用
+    {% if ai_enabled %}
+    document.getElementById('aiBadge').style.display = 'inline-block';
+    {% endif %}
+
+    function escHtml(str) {
+        var d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+})();
+</script>
+</body>
+</html>
