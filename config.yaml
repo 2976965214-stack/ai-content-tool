@@ -1,0 +1,34 @@
+app:
+  title: "AI Content Tool"
+  theme: dark
+  host: 127.0.0.1
+  port: 5000
+
+styles:
+  - name: 北欧简约
+    keywords: "Scandinavian minimalism, clean lines, neutral color palette, natural lighting, uncluttered composition, soft shadows, aesthetic and serene atmosphere"
+  - name: 科技感
+    keywords: "Futuristic tech style, neon accents, dark background with blue/purple glow, sleek metallic surfaces, HUD interface elements, high contrast, cyberpunk aesthetic"
+  - name: 日常场景
+    keywords: "Realistic everyday use scene, natural indoor lighting, candid lifestyle shot, warm atmosphere, genuine human interaction, photorealistic texture"
+  - name: 电商白底
+    keywords: "E-commerce white background, 360 degree studio lighting, pure white backdrop, sharp focus, commercial product photography, high-res detail, clean reflection on surface"
+  - name: 户外使用
+    keywords: "Outdoor adventure setting, golden hour sunlight, nature backdrop, dynamic action shot, deep depth of field, atmospheric sky, vibrant natural colors"
+
+dimensions:
+  default_width: 1080
+  default_height: 1080
+  watermark_opacity: 0.3
+  quality: 95
+
+ai:
+  # 模型选择: 可用模型列表见 https://router.shengsuanyun.com/api/v1/models
+  # 推荐: claude-sonnet-4-6 | claude-haiku-4-5 | claude-opus-4-8 | deepseek-v3 | gpt-4o
+  # 胜算云格式: anthropic/claude-sonnet-4.6, deepseek/deepseek-v3, openai/gpt-4o
+  model: "anthropic/claude-sonnet-4.6"
+  max_tokens: 300
+  temperature: 0.7
+  # API 请求地址（胜算云 OpenAI 兼容接口）
+  base_url: "https://router.shengsuanyun.com/api/v1"
+  # API Key 从环境变量 CLAUDE_API_KEY 读取，不要硬编码在配置文件里
